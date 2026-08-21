@@ -40,6 +40,8 @@ class LemonAudio {
   Future<void> setTrack(LemonAudioTrack track) => _handler.setTrack(track);
   Future<void> setTracks(List<LemonAudioTrack> tracks) =>
       _handler.setTracks(tracks);
+  Future<void> setNotificationButtons(List<LemonNotificationButton> buttons) =>
+      _handler.setNotificationButtons(buttons);
   void setDuration(Duration? duration) => _handler.setDuration(duration);
   void setPosition(Duration position) => _handler.setPosition(position);
   void setBufferedPosition(Duration position) =>

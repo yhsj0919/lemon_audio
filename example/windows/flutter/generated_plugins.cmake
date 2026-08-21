@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audio_service_win
   lemon_audio
+  mpv_audio_kit
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

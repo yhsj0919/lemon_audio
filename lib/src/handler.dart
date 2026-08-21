@@ -24,6 +24,7 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
   LemonPlayerState _reportedState = const LemonPlayerState.idle();
   late LemonAudioSettings _settings;
   bool _wasPlayingBeforeInterruption = false;
+  late List<LemonNotificationButton> _notificationButtons;
 
   Stream<String?> get lyricStream => _lyrics.stream;
   Stream<Duration> get positionStream => _positions.stream;
@@ -35,6 +36,8 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> initialize() async {
     _settings = config.settings;
     _validateVolume(_settings.duckVolume);
+    _notificationButtons = List.of(config.notificationButtons);
+    _validateNotificationButtons(_notificationButtons);
     if (_supportsAudioSession) {
       _session = await AudioSession.instance;
       await _configureSession();
@@ -147,6 +150,14 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
     queue.add(tracks.map((e) => e.toMediaItem()).toList(growable: false));
   }
 
+  Future<void> setNotificationButtons(
+    List<LemonNotificationButton> buttons,
+  ) async {
+    _validateNotificationButtons(buttons);
+    _notificationButtons = List.of(buttons);
+    _publishReportedState();
+  }
+
   Future<void> updateLyric(
     String? lyric, {
     LemonLyricMode mode = LemonLyricMode.appOnly,
@@ -196,6 +207,39 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  @override
+  Future<dynamic> customAction(
+    String name, [
+    Map<String, dynamic>? extras,
+  ]) async {
+    const prefix = 'lemon_notification:';
+    if (!name.startsWith(prefix)) return super.customAction(name, extras);
+    final id = name.substring(prefix.length);
+    for (var index = 0; index < _notificationButtons.length; index++) {
+      final button = _notificationButtons[index];
+      if (button.id == id &&
+          button.standardAction == null &&
+          button.onPressed != null) {
+        final replacement = await button.onPressed!();
+        if (replacement != null) {
+          if (replacement.id != id) {
+            throw ArgumentError.value(
+              replacement.id,
+              'replacement.id',
+              'must match the pressed button ID $id',
+            );
+          }
+          final updated = List<LemonNotificationButton>.of(_notificationButtons)
+            ..[index] = replacement;
+          _validateNotificationButtons(updated);
+          _notificationButtons = updated;
+          _publishReportedState();
+        }
+        return;
+      }
+    }
+  }
+
   void _broadcastState(LemonPlayerState state) {
     if (state.position != _reportedState.position) {
       _positions.add(state.position);
@@ -209,20 +253,21 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
 
   void _publishReportedState() {
     final state = _reportedState;
+    final controls = _notificationButtons
+        .map((button) => _mediaControlFor(button, state.playing))
+        .toList(growable: false);
     playbackState.add(
       PlaybackState(
-        controls: [
-          MediaControl.skipToPrevious,
-          state.playing ? MediaControl.pause : MediaControl.play,
-          MediaControl.skipToNext,
-          MediaControl.stop,
-        ],
+        controls: controls,
         systemActions: const {
           MediaAction.seek,
           MediaAction.seekForward,
           MediaAction.seekBackward,
         },
-        androidCompactActionIndices: const [0, 1, 2],
+        androidCompactActionIndices: [
+          for (var index = 0; index < _notificationButtons.length; index++)
+            if (_notificationButtons[index].androidCompact) index,
+        ],
         processingState: switch (state.processingState) {
           LemonProcessingState.idle => AudioProcessingState.idle,
           LemonProcessingState.loading => AudioProcessingState.loading,
@@ -251,6 +296,67 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
     if (!value.isFinite || value < 0 || value > 1) {
       throw ArgumentError.value(value, 'duckVolume', 'must be between 0 and 1');
     }
+  }
+
+  void _validateNotificationButtons(List<LemonNotificationButton> buttons) {
+    final ids = buttons.map((button) => button.id).toList(growable: false);
+    if (ids.any((id) => id.trim().isEmpty)) {
+      throw ArgumentError.value(
+        buttons,
+        'notificationButtons',
+        'button IDs must not be empty',
+      );
+    }
+    if (ids.toSet().length != ids.length) {
+      throw ArgumentError.value(
+        buttons,
+        'notificationButtons',
+        'button IDs must be unique',
+      );
+    }
+    if (buttons.where((button) => button.androidCompact).length > 3) {
+      throw ArgumentError.value(
+        buttons,
+        'notificationButtons',
+        'at most 3 buttons can set androidCompact to true',
+      );
+    }
+    for (final button in buttons.where(
+      (button) => button.standardAction == null,
+    )) {
+      if (button.androidIcon == null || button.androidIcon!.trim().isEmpty) {
+        throw ArgumentError.value(
+          button,
+          'notificationButtons',
+          'custom button androidIcon must not be empty',
+        );
+      }
+      if (button.label == null || button.label!.trim().isEmpty) {
+        throw ArgumentError.value(
+          button,
+          'notificationButtons',
+          'custom button label must not be empty',
+        );
+      }
+    }
+  }
+
+  MediaControl _mediaControlFor(LemonNotificationButton button, bool playing) {
+    if (button.standardAction == null) {
+      return MediaControl.custom(
+        androidIcon: button.androidIcon!,
+        label: button.label!,
+        name: 'lemon_notification:${button.id}',
+        extras: button.extras,
+      );
+    }
+    return switch (button.standardAction!) {
+      LemonStandardNotificationAction.previous => MediaControl.skipToPrevious,
+      LemonStandardNotificationAction.playPause =>
+        playing ? MediaControl.pause : MediaControl.play,
+      LemonStandardNotificationAction.next => MediaControl.skipToNext,
+      LemonStandardNotificationAction.stop => MediaControl.stop,
+    };
   }
 
   LemonAudioSettings _copySettings({

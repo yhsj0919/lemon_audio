@@ -25,6 +25,8 @@ dependencies:
     # the parent directory to use the current plugin's version.
     path: ../
 
+  mpv_audio_kit: ^0.4.4
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -47,6 +49,9 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  assets:
+    - assets/test-tone.wav
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
