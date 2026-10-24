@@ -4,10 +4,90 @@ import 'package:lemon_audio/lemon_audio.dart';
 import 'package:lemon_audio/src/handler.dart';
 
 void main() {
+  test(
+    'previous and next remain visible unless the host changes the buttons',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final handler = LemonAudioHandler(
+        _FakePlayer(),
+        const LemonAudioConfig(),
+      );
+      await handler.initialize();
+      addTearDown(handler.disposeHandler);
+      expect(
+        handler.playbackState.value.controls.map((item) => item.action.name),
+        ['skipToPrevious', 'play', 'skipToNext', 'stop'],
+      );
+      await handler.setTrack(
+        const LemonAudioTrack(id: '1', title: 'Only song'),
+      );
+      expect(
+        handler.playbackState.value.controls.map((item) => item.action.name),
+        ['skipToPrevious', 'play', 'skipToNext', 'stop'],
+      );
+      await handler.setNotificationButtons([LemonNotificationButton.playPause]);
+      expect(
+        handler.playbackState.value.controls.map((item) => item.action.name),
+        ['play'],
+      );
+    },
+  );
+
+  test(
+    'lyric titles throttle internally and retain only the latest line',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final handler = LemonAudioHandler(
+        _FakePlayer(),
+        const LemonAudioConfig(),
+      );
+      await handler.initialize();
+      addTearDown(handler.disposeHandler);
+      await handler.setTrack(const LemonAudioTrack(id: '1', title: 'Song'));
+      await handler.updateLyric('A', mode: LemonLyricMode.bluetoothTitle);
+      await handler.updateLyric('B', mode: LemonLyricMode.bluetoothTitle);
+      await handler.updateLyric('C', mode: LemonLyricMode.bluetoothTitle);
+      expect(handler.mediaItem.value!.title, 'A');
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      expect(handler.mediaItem.value!.title, 'C');
+      handler.setDuration(const Duration(minutes: 3));
+      expect(handler.mediaItem.value!.title, 'C');
+      await handler.updateLyric('pending', mode: LemonLyricMode.bluetoothTitle);
+      await handler.updateLyric(null, mode: LemonLyricMode.bluetoothTitle);
+      expect(handler.mediaItem.value!.title, 'Song');
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      expect(handler.mediaItem.value!.title, 'Song');
+    },
+  );
+
+  test('changing track cancels pending lyric titles', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final handler = LemonAudioHandler(_FakePlayer(), const LemonAudioConfig());
+    await handler.initialize();
+    addTearDown(handler.disposeHandler);
+    await handler.setTrack(const LemonAudioTrack(id: '1', title: 'First'));
+    await handler.updateLyric('A', mode: LemonLyricMode.bluetoothTitle);
+    await handler.updateLyric('pending', mode: LemonLyricMode.bluetoothTitle);
+    await handler.setTrack(const LemonAudioTrack(id: '2', title: 'Second'));
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    expect(handler.mediaItem.value!.title, 'Second');
+  });
+
   test('track metadata can be converted and overridden', () {
     const track = LemonAudioTrack(id: '1', title: 'Song', artist: 'Artist');
     expect(track.toMediaItem().artist, 'Artist');
     expect(track.toMediaItem(titleOverride: 'A lyric').title, 'A lyric');
+    expect(track.toMediaItem(titleOverride: 'A lyric').artist, 'Song · Artist');
+    expect(
+      const LemonAudioTrack(
+        id: '2',
+        title: 'Solo',
+      ).toMediaItem(titleOverride: 'Line').artist,
+      'Solo',
+    );
   });
 
   test('duration can be discovered after metadata', () {

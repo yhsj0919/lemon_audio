@@ -33,7 +33,12 @@ class LemonAudioTrack {
     id: id,
     title: titleOverride ?? title,
     album: album,
-    artist: artist,
+    artist: titleOverride == null
+        ? artist
+        : [
+            title,
+            if (artist != null && artist!.isNotEmpty) artist!,
+          ].join(' · '),
     duration: duration,
     artUri: artUri,
     extras: extras,

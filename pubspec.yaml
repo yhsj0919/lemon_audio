@@ -12,7 +12,8 @@ dependencies:
     sdk: flutter
   audio_service: ^0.18.19
   audio_service_mpris: ^0.2.1
-  audio_service_win: ^0.0.3
+  audio_service_win:
+    path: packages/audio_service_win
   audio_session: ^0.2.4
   flutter_web_plugins:
     sdk: flutter

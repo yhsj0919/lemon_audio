@@ -31,3 +31,7 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 /build/
 /coverage/
+
+# 内置依赖的本机构建产物
+/packages/*/build/
+/packages/*/pubspec.lock

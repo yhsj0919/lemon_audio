@@ -21,6 +21,9 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   AudioSession? _session;
   LemonAudioTrack? _track;
+  Timer? _titleTimer;
+  String? _pendingTitle;
+  String? _publishedTitle;
   LemonPlayerState _reportedState = const LemonPlayerState.idle();
   late LemonAudioSettings _settings;
   bool _wasPlayingBeforeInterruption = false;
@@ -113,6 +116,9 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> setTrack(LemonAudioTrack track) async {
+    _titleTimer?.cancel();
+    _titleTimer = null;
+    _pendingTitle = _publishedTitle = null;
     _track = track;
     mediaItem.add(track.toMediaItem());
     setPosition(Duration.zero);
@@ -129,7 +135,7 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
       duration: duration,
       clearDuration: duration == null,
     );
-    mediaItem.add(_track!.toMediaItem());
+    mediaItem.add(_track!.toMediaItem(titleOverride: _publishedTitle));
   }
 
   void setPosition(Duration position) {
@@ -165,12 +171,25 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
     _lyrics.add(lyric);
     final track = _track;
     if (track != null && mode == LemonLyricMode.bluetoothTitle) {
-      mediaItem.add(
-        track.toMediaItem(
-          titleOverride: lyric == null || lyric.isEmpty ? null : lyric,
-        ),
-      );
+      _pendingTitle = lyric == null || lyric.trim().isEmpty
+          ? null
+          : lyric.trim();
+      if (_pendingTitle == null) {
+        if (_publishedTitle == null) return;
+        _publishedTitle = null;
+        mediaItem.add(track.toMediaItem());
+      } else if (_titleTimer == null) {
+        _publishLyricTitle();
+      }
     }
+  }
+
+  void _publishLyricTitle() {
+    _titleTimer = null;
+    if (_pendingTitle == _publishedTitle || _track == null) return;
+    _publishedTitle = _pendingTitle;
+    mediaItem.add(_track!.toMediaItem(titleOverride: _publishedTitle));
+    _titleTimer = Timer(const Duration(seconds: 1), _publishLyricTitle);
   }
 
   @override
@@ -402,6 +421,7 @@ class LemonAudioHandler extends BaseAudioHandler with SeekHandler {
   );
 
   Future<void> disposeHandler() async {
+    _titleTimer?.cancel();
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }
